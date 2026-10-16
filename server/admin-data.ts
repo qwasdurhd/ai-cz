@@ -130,17 +130,34 @@ export async function resolveSharedProvider(id: number, allowPremium = false, ip
   return { kind: row.kind, model: row.model, endpoint: row.endpoint ?? "", apiKey: decryptAdminSecret(row.apiKeyCipher), sharedProviderId: id, premium: Boolean(row.premium), supportsAttachments: Boolean(row.supportsAttachments) } as ProviderInput & { premium: boolean; supportsAttachments: boolean };
 }
 
+const IPV4_PRIVATE = /^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/;
+
+function isInternalAddress(ip: string) {
+  const value = ip.replace(/^::ffff:/, "").toLowerCase();
+  if (!value) return true;
+  if (value === "::1" || value === "localhost" || value === "unknown") return true;
+  if (value.startsWith("fc") || value.startsWith("fd") || value.startsWith("fe80")) return true;
+  if (IPV4_PRIVATE.test(value)) return true;
+  // Cloudflare's proxied edge ranges (e.g. 172.68.x) sit between the client and the app.
+  if (/^172\.(6[4-9]|7[01])\./.test(value)) return true;
+  return false;
+}
+
 export function getClientIp(req: { headers?: Record<string, unknown>; socket?: { remoteAddress?: string | null }; ip?: string }, trustProxy = ENV.trustProxy) {
   const forwarded = req.headers?.["x-forwarded-for"];
   if (trustProxy && typeof forwarded === "string" && forwarded) {
-    // Behind a single trusted edge proxy (Render) the real client address is the LAST hop that
-    // the proxy appended. Earlier entries are client-supplied and must never be trusted, otherwise
-    // anyone could spoof the admin IP allowlist by sending their own X-Forwarded-For header.
     const parts = forwarded
       .split(",")
-      .map((part) => part.trim())
+      .map((part) => part.trim().replace(/^::ffff:/, ""))
       .filter(Boolean);
-    if (parts.length) return parts[parts.length - 1].replace(/^::ffff:/, "");
+    if (parts.length) {
+      // The trusted edge appends its own hops to the RIGHT, and a client can only prepend
+      // to the LEFT. Walking in from the right past the known proxy hops (and any internal
+      // address) lands on the real client, so spoofed prefixes are ignored.
+      let index = parts.length - 1 - ENV.trustedProxyHops;
+      while (index > 0 && isInternalAddress(parts[index])) index -= 1;
+      return parts[Math.max(0, Math.min(index, parts.length - 1))];
+    }
   }
   return (req.ip || req.socket?.remoteAddress || "unknown").replace(/^::ffff:/, "");
 }

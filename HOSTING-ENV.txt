@@ -6,8 +6,11 @@ ADMIN_PASSWORD=choose-your-private-admin-password
 ADMIN_SECRET=generate-another-long-random-secret
 PORT=3000
 TRUST_PROXY=0
+TRUSTED_PROXY_HOPS=2
 
 Use TRUST_PROXY=1 only behind a trusted reverse proxy.
+TRUSTED_PROXY_HOPS is how many entries the trusted edge appends to X-Forwarded-For
+(Render = 2). It keeps the admin IP allowlist from being spoofed.
 Never commit real values to Git or upload them in the public project folder.
 # Optional: path to a TTF font with Arabic glyphs for PDF exports
 PDF_FONT_PATH=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf

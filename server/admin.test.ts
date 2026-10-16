@@ -9,10 +9,10 @@ describe("admin security helpers", () => {
     expect(decryptAdminSecret(cipher)).toBe("sk-private-test-key");
   });
 
-  it("uses the last hop appended by the trusted proxy and ignores client-supplied entries", () => {
-    // A client can inject its own entries at the front of X-Forwarded-For; the trusted proxy
-    // appends the real address last, which is the only value we may rely on.
-    expect(getClientIp({ headers: { "x-forwarded-for": "10.0.0.4, 203.0.113.7" }, ip: "127.0.0.1" }, true)).toBe("203.0.113.7");
+  it("resolves the real client IP behind the trusted proxy chain and ignores spoofed prefixes", () => {
+    // [client-supplied fake], real client, Cloudflare edge, Render internal
+    expect(getClientIp({ headers: { "x-forwarded-for": "203.0.113.7, 51.39.112.150, 172.68.1.1, 10.0.0.4" }, ip: "127.0.0.1" }, true)).toBe("51.39.112.150");
+    expect(getClientIp({ headers: { "x-forwarded-for": "51.39.112.150, 172.68.1.1, 10.0.0.4" }, ip: "127.0.0.1" }, true)).toBe("51.39.112.150");
     expect(getClientIp({ headers: { "x-forwarded-for": "203.0.113.7" }, ip: "127.0.0.1" }, true)).toBe("203.0.113.7");
   });
 

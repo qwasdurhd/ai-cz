@@ -93,19 +93,6 @@ export const appRouter = router({
   site: router({
     getConfig: publicProcedure.query(({ ctx }) => getPublicSiteConfig(readDeviceCode(ctx.req), getClientIp(ctx.req))),
     quota: publicProcedure.query(({ ctx }) => getQuotaStatus(getClientIp(ctx.req))),
-    // TEMP: raw proxy header diagnostics (removed after deployment verification).
-    debugIp: publicProcedure.query(({ ctx }) => {
-      const req = ctx.req as unknown as { headers: Record<string, unknown>; ip?: string; socket?: { remoteAddress?: string | null } };
-      return {
-        clientIp: getClientIp(ctx.req),
-        xff: String(req.headers["x-forwarded-for"] ?? ""),
-        xRealIp: String(req.headers["x-real-ip"] ?? ""),
-        forwarded: String(req.headers["forwarded"] ?? ""),
-        ip: String(req.ip ?? ""),
-        remote: String(req.socket?.remoteAddress ?? ""),
-        proxyHeaders: Object.keys(req.headers).filter((h) => h.startsWith("x-") || h.includes("forward") || h.includes("real")),
-      };
-    }),
   }),
   device: router({
     // Registers the visit, resolves the IP location once, returns current access state.
