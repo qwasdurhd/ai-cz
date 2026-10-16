@@ -132,7 +132,16 @@ export async function resolveSharedProvider(id: number, allowPremium = false, ip
 
 export function getClientIp(req: { headers?: Record<string, unknown>; socket?: { remoteAddress?: string | null }; ip?: string }, trustProxy = ENV.trustProxy) {
   const forwarded = req.headers?.["x-forwarded-for"];
-  if (trustProxy && typeof forwarded === "string" && forwarded) return forwarded.split(",")[0].trim();
+  if (trustProxy && typeof forwarded === "string" && forwarded) {
+    // Behind a single trusted edge proxy (Render) the real client address is the LAST hop that
+    // the proxy appended. Earlier entries are client-supplied and must never be trusted, otherwise
+    // anyone could spoof the admin IP allowlist by sending their own X-Forwarded-For header.
+    const parts = forwarded
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (parts.length) return parts[parts.length - 1].replace(/^::ffff:/, "");
+  }
   return (req.ip || req.socket?.remoteAddress || "unknown").replace(/^::ffff:/, "");
 }
 

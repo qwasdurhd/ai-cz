@@ -9,8 +9,11 @@ describe("admin security helpers", () => {
     expect(decryptAdminSecret(cipher)).toBe("sk-private-test-key");
   });
 
-  it("uses the first trusted forwarded IP when a proxy provides it", () => {
-    expect(getClientIp({ headers: { "x-forwarded-for": "203.0.113.7, 10.0.0.4" }, ip: "127.0.0.1" }, true)).toBe("203.0.113.7");
+  it("uses the last hop appended by the trusted proxy and ignores client-supplied entries", () => {
+    // A client can inject its own entries at the front of X-Forwarded-For; the trusted proxy
+    // appends the real address last, which is the only value we may rely on.
+    expect(getClientIp({ headers: { "x-forwarded-for": "10.0.0.4, 203.0.113.7" }, ip: "127.0.0.1" }, true)).toBe("203.0.113.7");
+    expect(getClientIp({ headers: { "x-forwarded-for": "203.0.113.7" }, ip: "127.0.0.1" }, true)).toBe("203.0.113.7");
   });
 
   it("does not trust a spoofed forwarded IP when proxy trust is disabled", () => {
