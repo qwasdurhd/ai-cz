@@ -1,0 +1,1 @@
+ALTER TABLE `sharedProviders` MODIFY COLUMN `kind` enum('openai','anthropic','google','openrouter','custom','czai') NOT NULL;

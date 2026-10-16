@@ -1,0 +1,33 @@
+# Render Blueprint — one-click deploy of Ai - Cz on the FREE plan.
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: ai-cz
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeploy: true
+    buildCommand: corepack enable && pnpm install --prod=false && pnpm build
+    startCommand: node dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      # The app sits behind Render's proxy, so read the real client IP from it.
+      - key: TRUST_PROXY
+        value: "1"
+      # Leave empty to allow the panel from anywhere (still password protected),
+      # or set your network, e.g. "203.0.113.7" or "203.0.113.0/24".
+      - key: ADMIN_ALLOWED_IPS
+        value: ""
+      # Secrets — Render asks for these on first deploy (sync: false).
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_SECRET
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

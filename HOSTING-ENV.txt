@@ -1,0 +1,13 @@
+Set these environment variables on your hosting provider before starting Ai - Cz:
+
+DATABASE_URL=mysql://USER:PASSWORD@HOST:3306/ai_cz
+JWT_SECRET=generate-a-long-random-secret
+ADMIN_PASSWORD=choose-your-private-admin-password
+ADMIN_SECRET=generate-another-long-random-secret
+PORT=3000
+TRUST_PROXY=0
+
+Use TRUST_PROXY=1 only behind a trusted reverse proxy.
+Never commit real values to Git or upload them in the public project folder.
+# Optional: path to a TTF font with Arabic glyphs for PDF exports
+PDF_FONT_PATH=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf

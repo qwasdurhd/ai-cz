@@ -1,0 +1,90 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1790380130214,
+      "tag": "0000_condemned_red_shift",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1790413092163,
+      "tag": "0001_whole_purple_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1790413807687,
+      "tag": "0002_parched_mordo",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1790415469750,
+      "tag": "0003_little_gwen_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1791907307642,
+      "tag": "0004_worried_mister_fear",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1791909382740,
+      "tag": "0005_shocking_hellcat",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1791909892519,
+      "tag": "0006_small_prowler",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1791928932594,
+      "tag": "0007_hot_vulture",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1791974853376,
+      "tag": "0008_marvelous_morgan_stark",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1791976750926,
+      "tag": "0009_useful_stature",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1791979348492,
+      "tag": "0010_wonderful_meltdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1791981734153,
+      "tag": "0011_plain_dragon_man",
+      "breakpoints": true
+    }
+  ]
+}

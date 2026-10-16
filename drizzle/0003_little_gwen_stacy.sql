@@ -1,0 +1,1 @@
+ALTER TABLE `sharedProviders` ADD `supportsAttachments` int DEFAULT 0 NOT NULL;
