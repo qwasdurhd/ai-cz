@@ -9,7 +9,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { messagesSchema, providerSchema, streamProvider, type TokenUsage } from "../ai-provider";
+import { cleanMessages, messagesSchema, providerSchema, streamProvider, type TokenUsage } from "../ai-provider";
 import { runAgent } from "../agent";
 import { serveAnswerPdf, serveConversationPdf } from "../pdf";
 import { consumeMessageQuota, getClientIp, getPublicSiteConfig, isBlockedIp, resolveSharedProvider, trackVisitor } from "../admin-data";
@@ -127,7 +127,8 @@ async function startServer() {
       if ("denied" in provider) throw new TRPCError({ code: "FORBIDDEN", message: provider.reason });
       const quota = await consumeMessageQuota(ip);
       if (!quota.allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `وصلت إلى حد الرسائل اليومي (${quota.limit}). جرّب غدًا.` });
-      const messages = messagesSchema.parse(req.body?.messages);
+      const messages = cleanMessages(messagesSchema.parse(req.body?.messages));
+      if (!messages.length) throw new TRPCError({ code: "BAD_REQUEST", message: "لا يوجد نص للإرسال — اكتب رسالة ثم أعد المحاولة." });
       res.status(200).set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
       res.flushHeaders();
       let usage: TokenUsage | undefined;
@@ -172,7 +173,8 @@ async function startServer() {
       if (provider.kind !== "demo" && !provider.apiKey) throw new TRPCError({ code: "BAD_REQUEST", message: "أضف مفتاح API حقيقيًا لتشغيل الوكيل" });
       const quota = await consumeMessageQuota(ip);
       if (!quota.allowed) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: `وصلت إلى حد الرسائل اليومي (${quota.limit}). جرّب غدًا.` });
-      const messages = messagesSchema.parse(req.body?.messages);
+      const messages = cleanMessages(messagesSchema.parse(req.body?.messages));
+      if (!messages.length) throw new TRPCError({ code: "BAD_REQUEST", message: "لا يوجد نص للإرسال — اكتب رسالة ثم أعد المحاولة." });
       const maxSteps = Number(req.body?.maxSteps) || 5;
       res.status(200).set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
       res.flushHeaders();

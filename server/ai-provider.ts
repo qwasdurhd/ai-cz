@@ -12,7 +12,17 @@ export type TokenUsage = { input: number; output: number };
 
 const attachmentSchema = z.object({ name: z.string().min(1).max(180), mimeType: z.string().max(120), data: z.string().max(15_000_000).optional(), text: z.string().max(120_000).optional() }).refine(value => Boolean(value.data || value.text), "المرفق فارغ");
 export const providerSchema = z.object({ kind: z.enum(["demo", "openai", "anthropic", "google", "openrouter", "custom", "czai"]), model: z.string().min(1).max(150), endpoint: z.string().max(500).optional(), apiKey: z.string().max(500).optional(), sharedProviderId: z.number().int().positive().optional(), supportsAttachments: z.boolean().optional() });
-export const messagesSchema = z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(30000), attachments: z.array(attachmentSchema).max(4).optional(), reasoningDetails: z.array(z.unknown()).max(600).optional() })).min(1).max(100);
+export const messagesSchema = z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(30000), attachments: z.array(attachmentSchema).max(4).optional(), reasoningDetails: z.array(z.unknown()).max(600).optional() })).min(1).max(100);
+
+// Drop turns with no usable content (e.g. a reasoning model that produced an
+// empty visible answer) and any leading assistant turn, so a single bad turn
+// can never make the whole conversation unusable. Provider APIs require at
+// least one non-empty message, so callers should reject an empty result.
+export function cleanMessages<T extends { role: string; content?: string; attachments?: unknown[] }>(messages: T[]): T[] {
+  const usable = messages.filter(message => (message.content || "").trim().length > 0 || (message.attachments?.length ?? 0) > 0);
+  const firstUser = usable.findIndex(message => message.role === "user");
+  return firstUser > 0 ? usable.slice(firstUser) : usable;
+}
 
 export function openAiLike(provider: ProviderInput) {
   return provider.kind === "openai" || provider.kind === "openrouter" || provider.kind === "custom" || provider.kind === "czai";

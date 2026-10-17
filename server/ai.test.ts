@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
-import { callProvider, mergeReasoningDetails, openAiMessages, streamProvider } from "./ai-provider";
+import { callProvider, cleanMessages, mergeReasoningDetails, openAiMessages, streamProvider } from "./ai-provider";
 import type { TrpcContext } from "./_core/context";
 
 const publicContext = {
@@ -72,6 +72,22 @@ describe("ai router", () => {
     mergeReasoningDetails(acc, undefined);
     mergeReasoningDetails(acc, [null, "x"]);
     expect(acc.length).toBe(2);
+  });
+
+  it("drops empty turns and any leading assistant turn from a poisoned history", () => {
+    const cleaned = cleanMessages([
+      { role: "assistant", content: "" },
+      { role: "user", content: "مرحبا" },
+      { role: "assistant", content: "" },
+      { role: "user", content: "كيفك؟" },
+    ]);
+
+    expect(cleaned).toEqual([
+      { role: "user", content: "مرحبا" },
+      { role: "user", content: "كيفك؟" },
+    ]);
+    expect(cleanMessages([{ role: "assistant", content: "   " }])).toEqual([]);
+    expect(cleanMessages([{ role: "user", content: "" }])).toEqual([]);
   });
 
   it("replays assistant reasoning_details into the outbound OpenAI messages", () => {

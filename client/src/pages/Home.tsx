@@ -700,12 +700,17 @@ export default function Home() {
     const convTokens = (msgs: ChatMessage[]) => msgs.reduce((sum, message) => sum + (message.tokens ?? 0), 0);
     let finalMessages = streamingConversation.messages;
     let finishedOk = false;
+    // A reasoning model can finish with an empty visible answer (its whole output
+    // was the reasoning trace). Never persist a blank assistant turn: it would
+    // poison the history and make every later message fail validation.
+    const EMPTY_REPLY = tr("لم يصل رد من النموذج — أعد المحاولة.", "The model returned an empty reply — try again.");
+    const replyText = (text: string) => (text && text.trim() ? text : EMPTY_REPLY);
     const buildFinal = (text: string, usage?: { input: number; output: number }, reasoningDetails?: unknown[]): ChatMessage[] => [
       ...nextMessages,
       {
         id: assistantId,
         role: "assistant" as const,
-        content: text,
+        content: replyText(text),
         createdAt: assistantCreatedAt,
         model: modelLabel,
         tokens: usage ? Math.max(0, (usage.input ?? 0) + (usage.output ?? 0)) : undefined,
@@ -726,7 +731,11 @@ export default function Home() {
         sharedProviderId: activeProvider.sharedProviderId,
         supportsAttachments: activeProvider.supportsAttachments,
       };
-      const historyMessages = [...nextMessages.slice(0, -1).map(message => ({ role: message.role, content: message.content, ...(message.role === "assistant" && message.reasoningDetails?.length ? { reasoningDetails: message.reasoningDetails } : {}) })), { role: "user" as const, content: displayContent, attachments: requestAttachments.map(({ name, mimeType, data, text }) => ({ name, mimeType, data, text })) }];
+      const cleanHistory = nextMessages.slice(0, -1)
+        .filter(message => (message.content || "").trim().length > 0)
+        .map(message => ({ role: message.role, content: message.content, ...(message.role === "assistant" && message.reasoningDetails?.length ? { reasoningDetails: message.reasoningDetails } : {}) }));
+      const firstUserIndex = cleanHistory.findIndex(message => message.role === "user");
+      const historyMessages = [...(firstUserIndex > 0 ? cleanHistory.slice(firstUserIndex) : cleanHistory), { role: "user" as const, content: displayContent, attachments: requestAttachments.map(({ name, mimeType, data, text }) => ({ name, mimeType, data, text })) }];
       if (mode === "agent") {
         const agentResult = await streamAgent({ provider: providerPayload, messages: historyMessages, maxSteps: 5 }, {
           onChunk: text => syncStream(buildFinal(text)),

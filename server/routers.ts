@@ -4,7 +4,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc";
-import { callProvider, messagesSchema, providerSchema } from "./ai-provider";
+import { callProvider, cleanMessages, messagesSchema, providerSchema } from "./ai-provider";
 import { clearAdminSession, createAdminSession, isAdminIpAllowed, isAdminRequest } from "./admin-auth";
 import {
   addAdminProvider,
@@ -175,7 +175,7 @@ export const appRouter = router({
     }),
   }),
   ai: router({
-    chat: publicProcedure.input(z.object({ provider: providerSchema, messages: messagesSchema })).mutation(async ({ ctx, input }) => { const provider = await resolveAiProvider(input.provider, getClientIp(ctx.req), readDeviceCode(ctx.req)); await enforceChatGuard(ctx); return { content: await callProvider(provider, input.messages) }; }),
+    chat: publicProcedure.input(z.object({ provider: providerSchema, messages: messagesSchema })).mutation(async ({ ctx, input }) => { const provider = await resolveAiProvider(input.provider, getClientIp(ctx.req), readDeviceCode(ctx.req)); await enforceChatGuard(ctx); const messages = cleanMessages(input.messages); if (!messages.length) throw new TRPCError({ code: "BAD_REQUEST", message: "لا يوجد نص للإرسال — اكتب رسالة ثم أعد المحاولة." }); return { content: await callProvider(provider, messages) }; }),
     verify: publicProcedure.input(z.object({ provider: providerSchema })).mutation(async ({ ctx, input }) => { await callProvider(await resolveAiProvider(input.provider, getClientIp(ctx.req), readDeviceCode(ctx.req)), [{ role: "user", content: "Reply only with OK." }]); return { success: true } as const; }),
   }),
   admin: router({
