@@ -59,7 +59,7 @@ import { deleteSupportThread, getSupportThread, listSupportThreads, postSupportM
 
 const adminProviderInput = z.object({ name: z.string().trim().min(2).max(120), kind: z.enum(["openai", "anthropic", "google", "openrouter", "custom", "czai"]), model: z.string().trim().min(1).max(150), endpoint: z.string().max(500).optional(), apiKey: z.string().min(1).max(500), premium: z.boolean().optional(), price: z.number().int().min(0).max(1000000).optional(), description: z.string().max(1000).optional(), supportsAttachments: z.boolean().optional() });
 
-const chatMessageInput = z.object({ id: z.string().max(64), role: z.enum(["user", "assistant"]), content: z.string().max(120000), createdAt: z.number(), model: z.string().max(150).optional(), tokens: z.number().int().min(0).max(100_000_000).optional() });
+const chatMessageInput = z.object({ id: z.string().max(64), role: z.enum(["user", "assistant"]), content: z.string().max(120000), createdAt: z.number(), model: z.string().max(150).optional(), tokens: z.number().int().min(0).max(100_000_000).optional(), reasoningDetails: z.array(z.unknown()).max(600).optional() });
 
 function readDeviceCode(req: { headers?: Record<string, unknown> }) {
   const raw = req.headers?.["x-device-code"];

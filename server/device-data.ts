@@ -524,7 +524,7 @@ export async function incrementDeviceMessages(code: string) {
 /** 72 hours — conversations auto-expire to keep storage small (e.g. shared hosting). */
 export const CONVERSATION_TTL_MS = 72 * 60 * 60 * 1000;
 
-export type StoredMessage = { id: string; role: "user" | "assistant"; content: string; createdAt: number; model?: string; tokens?: number };
+export type StoredMessage = { id: string; role: "user" | "assistant"; content: string; createdAt: number; model?: string; tokens?: number; reasoningDetails?: unknown[] };
 
 export async function saveConversation(input: { code: string; ip?: string; conversationId: string; title: string; mode?: string; messages: StoredMessage[]; tokens?: number }) {
   const db = await getDb();
@@ -618,6 +618,7 @@ function safeParseMessages(raw: string): StoredMessage[] {
         createdAt: typeof value.createdAt === "number" ? value.createdAt : Date.now(),
         model: typeof value.model === "string" && value.model ? value.model : undefined,
         tokens: typeof value.tokens === "number" && value.tokens > 0 ? value.tokens : undefined,
+        reasoningDetails: Array.isArray(value.reasoningDetails) && value.reasoningDetails.length ? value.reasoningDetails : undefined,
       }));
   } catch {
     return [];

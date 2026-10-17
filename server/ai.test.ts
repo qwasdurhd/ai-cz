@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
-import { callProvider, streamProvider } from "./ai-provider";
+import { callProvider, mergeReasoningDetails, openAiMessages, streamProvider } from "./ai-provider";
 import type { TrpcContext } from "./_core/context";
 
 const publicContext = {
@@ -57,5 +57,34 @@ describe("ai router", () => {
 
   it("rejects attachments when the model capability is disabled", async () => {
     await expect(callProvider({ kind: "demo", model: "Cz-Reasoner", supportsAttachments: false }, [{ role: "user", content: "", attachments: [{ name: "photo.png", mimeType: "image/png", data: "data:image/png;base64,AAAA" }] }])).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("merges streaming reasoning_details by index", () => {
+    const acc: unknown[] = [];
+    mergeReasoningDetails(acc, [{ index: 0, type: "reasoning.text", format: "unknown", text: "Hello " }]);
+    mergeReasoningDetails(acc, [{ index: 0, type: "reasoning.text", format: "unknown", text: "world" }, { index: 1, type: "reasoning.text", format: "unknown", text: "!" }]);
+
+    expect(acc).toEqual([
+      { index: 0, type: "reasoning.text", format: "unknown", text: "Hello world" },
+      { index: 1, type: "reasoning.text", format: "unknown", text: "!" },
+    ]);
+    // Undefined / malformed input is ignored rather than throwing.
+    mergeReasoningDetails(acc, undefined);
+    mergeReasoningDetails(acc, [null, "x"]);
+    expect(acc.length).toBe(2);
+  });
+
+  it("replays assistant reasoning_details into the outbound OpenAI messages", () => {
+    const details = [{ index: 0, type: "reasoning.text", format: "unknown", text: "think" }];
+    const payload = openAiMessages([
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello", reasoningDetails: details },
+      { role: "user", content: "again" },
+    ]);
+
+    expect(payload[0]).toEqual({ role: "user", content: "hi" });
+    expect(payload[1]).toMatchObject({ role: "assistant", content: "hello", reasoning_details: details });
+    // The user turn never carries reasoning_details.
+    expect(payload[2]).not.toHaveProperty("reasoning_details");
   });
 });

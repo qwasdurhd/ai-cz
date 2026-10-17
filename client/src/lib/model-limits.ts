@@ -23,6 +23,8 @@ const MODEL_LIMITS: Array<{ match: RegExp; limit: number }> = [
   { match: /venice/i, limit: 32000 },
   { match: /cz-pro|cz-reasoner|cz-coder|cz-vision|cz-fast/i, limit: 128000 },
   { match: /command-r/i, limit: 131072 },
+  { match: /gemma-4|gemma4/i, limit: 262144 },
+  { match: /gemma-3|gemma3/i, limit: 131072 },
   { match: /gemma/i, limit: 8192 },
 ];
 

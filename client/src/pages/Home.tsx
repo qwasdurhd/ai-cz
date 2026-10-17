@@ -51,7 +51,7 @@ import { formatTokenLimit, modelTokenLimit } from "@/lib/model-limits";
 import { playChime, playDone, playAlert } from "@/lib/sound";
 
 type Role = "user" | "assistant";
-type ChatMessage = { id: string; role: Role; content: string; createdAt: number; model?: string; tokens?: number };
+type ChatMessage = { id: string; role: Role; content: string; createdAt: number; model?: string; tokens?: number; reasoningDetails?: unknown[] };
 type PendingAttachment = { id: string; name: string; mimeType: string; kind: "image" | "text"; data?: string; text?: string };
 type Conversation = { id: string; title: string; messages: ChatMessage[]; updatedAt: number; tokens?: number; expiresAt?: number };
 type Provider = {
@@ -150,10 +150,10 @@ async function decryptSecret(cipher?: string) {
 }
 
 async function streamChat(
-  input: { provider: { kind: ProviderKind; model: string; endpoint: string; apiKey: string; sharedProviderId?: number; supportsAttachments?: boolean }; messages: { role: Role; content: string; attachments?: Array<{ name: string; mimeType: string; data?: string; text?: string }> }[] },
+  input: { provider: { kind: ProviderKind; model: string; endpoint: string; apiKey: string; sharedProviderId?: number; supportsAttachments?: boolean }; messages: { role: Role; content: string; attachments?: Array<{ name: string; mimeType: string; data?: string; text?: string }>; reasoningDetails?: unknown[] }[] },
   onChunk: (content: string) => void,
   signal: AbortSignal,
-): Promise<{ content: string; usage?: { input: number; output: number } }> {
+): Promise<{ content: string; usage?: { input: number; output: number }; reasoningDetails?: unknown[] }> {
   const response = await fetch("/api/ai/stream", {
     method: "POST",
     headers: { "content-type": "application/json", "x-device-code": getDeviceCode() },
@@ -171,6 +171,7 @@ async function streamChat(
   let buffer = "";
   let fullContent = "";
   let usage: { input: number; output: number } | undefined;
+  let reasoningDetails: unknown[] | undefined;
   let finished = false;
   while (!finished) {
     const { value, done } = await reader.read();
@@ -180,18 +181,19 @@ async function streamChat(
     for (const event of events) {
       const line = event.split(/\r?\n/).find(item => item.startsWith("data:"));
       if (!line) continue;
-      const payload = JSON.parse(line.slice(5).trim()) as { type: string; content?: string; message?: string; input?: number; output?: number };
+      const payload = JSON.parse(line.slice(5).trim()) as { type: string; content?: string; message?: string; input?: number; output?: number; details?: unknown[] };
       if (payload.type === "chunk" && payload.content) {
         fullContent += payload.content;
         onChunk(fullContent);
       }
       if (payload.type === "usage" && typeof payload.input === "number") usage = { input: payload.input, output: payload.output ?? 0 };
+      if (payload.type === "reasoning" && Array.isArray(payload.details)) reasoningDetails = payload.details;
       if (payload.type === "error") throw new Error(payload.message || t("تعذر إكمال البث", "Could not complete the stream"));
       if (payload.type === "done") finished = true;
     }
     if (done) finished = true;
   }
-  return { content: fullContent, usage };
+  return { content: fullContent, usage, reasoningDetails };
 }
 
 type AgentStreamEvent = { type: string; content?: string; message?: string; label?: string; tool?: string; summary?: string; input?: number; output?: number };
@@ -698,7 +700,7 @@ export default function Home() {
     const convTokens = (msgs: ChatMessage[]) => msgs.reduce((sum, message) => sum + (message.tokens ?? 0), 0);
     let finalMessages = streamingConversation.messages;
     let finishedOk = false;
-    const buildFinal = (text: string, usage?: { input: number; output: number }): ChatMessage[] => [
+    const buildFinal = (text: string, usage?: { input: number; output: number }, reasoningDetails?: unknown[]): ChatMessage[] => [
       ...nextMessages,
       {
         id: assistantId,
@@ -707,6 +709,7 @@ export default function Home() {
         createdAt: assistantCreatedAt,
         model: modelLabel,
         tokens: usage ? Math.max(0, (usage.input ?? 0) + (usage.output ?? 0)) : undefined,
+        reasoningDetails: reasoningDetails?.length ? reasoningDetails : undefined,
       },
     ];
     const syncStream = (msgs: ChatMessage[]) => {
@@ -723,7 +726,7 @@ export default function Home() {
         sharedProviderId: activeProvider.sharedProviderId,
         supportsAttachments: activeProvider.supportsAttachments,
       };
-      const historyMessages = [...nextMessages.slice(0, -1).map(message => ({ role: message.role, content: message.content })), { role: "user" as const, content: displayContent, attachments: requestAttachments.map(({ name, mimeType, data, text }) => ({ name, mimeType, data, text })) }];
+      const historyMessages = [...nextMessages.slice(0, -1).map(message => ({ role: message.role, content: message.content, ...(message.role === "assistant" && message.reasoningDetails?.length ? { reasoningDetails: message.reasoningDetails } : {}) })), { role: "user" as const, content: displayContent, attachments: requestAttachments.map(({ name, mimeType, data, text }) => ({ name, mimeType, data, text })) }];
       if (mode === "agent") {
         const agentResult = await streamAgent({ provider: providerPayload, messages: historyMessages, maxSteps: 5 }, {
           onChunk: text => syncStream(buildFinal(text)),
@@ -735,7 +738,7 @@ export default function Home() {
         const chatResult = await streamChat({ provider: providerPayload, messages: historyMessages }, text => {
           syncStream(buildFinal(text));
         }, new AbortController().signal);
-        syncStream(buildFinal(chatResult.content, chatResult.usage));
+        syncStream(buildFinal(chatResult.content, chatResult.usage, chatResult.reasoningDetails));
         finishedOk = true;
       }
     } catch (error) {

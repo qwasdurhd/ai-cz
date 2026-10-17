@@ -131,8 +131,12 @@ async function startServer() {
       res.status(200).set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
       res.flushHeaders();
       let usage: TokenUsage | undefined;
-      for await (const chunk of streamProvider(provider, messages, { onUsage: value => { usage = value; } })) {
+      let reasoningDetails: unknown[] | undefined;
+      for await (const chunk of streamProvider(provider, messages, { onUsage: value => { usage = value; }, onReasoningDetails: value => { reasoningDetails = value; } })) {
         res.write(`data: ${JSON.stringify({ type: "chunk", content: chunk })}\n\n`);
+      }
+      if (reasoningDetails && reasoningDetails.length) {
+        res.write(`data: ${JSON.stringify({ type: "reasoning", details: reasoningDetails })}\n\n`);
       }
       if (usage && (usage.input || usage.output)) {
         res.write(`data: ${JSON.stringify({ type: "usage", input: usage.input, output: usage.output })}\n\n`);
