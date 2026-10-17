@@ -327,7 +327,6 @@ button:active { transform: scale(.98); }
 .ctx-meter-copy b{color:var(--text);font:600 9px "DM Mono"}
 .ctx-meter-copy small{color:var(--muted);font-size:8px}
 .ctx-more{color:var(--muted);font:600 8px "DM Mono"}
-@media(max-width:980px){.ctx-meter-copy small{display:none}}
 
 /* 72h countdown inside sidebar rows */
 .conv-expiry{display:flex;align-items:center;gap:3px;color:var(--muted);font-size:9px;font-weight:400;margin-top:3px}
