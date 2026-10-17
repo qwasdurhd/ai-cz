@@ -47,6 +47,7 @@ import { DEFAULT_PROVIDERS, SITE_CONFIG, type ProviderKind } from "@/config/site
 import RichMessage from "@/components/RichMessage";
 import { getDeviceCode } from "@/lib/device";
 import { t, setLangGlobal } from "@/lib/i18n";
+import { formatTokenLimit, modelTokenLimit } from "@/lib/model-limits";
 import { playChime, playDone, playAlert } from "@/lib/sound";
 
 type Role = "user" | "assistant";
@@ -286,6 +287,45 @@ const PROVIDER_META: Record<Exclude<ProviderKind, "demo">, { label: string; labe
   custom: { label: "متوافق مخصص", labelEn: "Custom compatible", hint: "OpenAI-compatible", hintEn: "OpenAI-compatible", defaultModel: "your-model", defaultEndpoint: "" },
   czai: { label: "نماذج Cz", labelEn: "Cz models", hint: "Cz AI · يعمل مع أي واجهة متوافقة", hintEn: "Cz AI · works with any compatible endpoint", defaultModel: "cz-reasoner", defaultEndpoint: "https://api.openai.com/v1" },
 };
+
+function ContextRing({ fraction, size = 16 }: { fraction: number; size?: number }) {
+  const stroke = 2;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(1, Number.isFinite(fraction) ? fraction : 0));
+  const full = clamped >= 0.999;
+  return (
+    <svg className={`ctx-ring ${full ? "full" : ""}`} width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+      <circle className="ctx-ring-track" cx={size / 2} cy={size / 2} r={radius} />
+      <circle className="ctx-ring-fill" cx={size / 2} cy={size / 2} r={radius} strokeDasharray={circumference} strokeDashoffset={circumference * (1 - clamped)} />
+    </svg>
+  );
+}
+
+// Shows the live context usage as a row of small rings: one ring per context
+// window. Each ring fills as tokens are spent, and once a window is full the next
+// ring starts filling beside it while the running totals stay intact.
+function ContextMeter({ used, model, lang }: { used: number; model?: string | null; lang: "ar" | "en" }) {
+  const limit = modelTokenLimit(model);
+  const locale = lang === "ar" ? "ar-SA" : "en-US";
+  const L = (ar: string, en: string) => (lang === "ar" ? ar : en);
+  if (!limit || limit <= 0) {
+    if (!used) return null;
+    return <span className="token-chip" title={L("إجمالي التوكنز المستهلكة في هذه المحادثة", "Total tokens used in this conversation")}><Gauge size={13} /><b>{used.toLocaleString(locale)}</b><small>{L("توكن", "tokens")}</small></span>;
+  }
+  const windows = Math.max(1, Math.ceil(used / limit));
+  const shown = Math.min(windows, 6);
+  const hidden = windows - shown;
+  return (
+    <span className="ctx-meter" title={L(`استُهلك ${used.toLocaleString(locale)} توكن من أصل ${limit.toLocaleString(locale)} في نافذة السياق`, `Used ${used.toLocaleString(locale)} of ${limit.toLocaleString(locale)} tokens in the context window`)}>
+      <span className="ctx-rings">
+        {Array.from({ length: shown }, (_, index) => <ContextRing key={index} fraction={(used - index * limit) / limit} />)}
+        {hidden > 0 ? <span className="ctx-more">+{hidden}</span> : null}
+      </span>
+      <span className="ctx-meter-copy"><b>{used.toLocaleString(locale)}</b><small>{L("من", "of")} {formatTokenLimit(model)}</small></span>
+    </span>
+  );
+}
 
 function SubscriptionGate({ siteName, telegramUsername, lang }: { siteName: string; telegramUsername: string; lang: "ar" | "en" }) {
   const username = telegramUsername.replace(/^@/, "");
@@ -881,7 +921,7 @@ export default function Home() {
         <main className="chat-stage">
           <div className="chat-header">
             <div className="chat-context"><div className="status-orb"><Bot size={17} /></div><div><b>{activeConversation?.title || tr("مساحتك الذكية", "Your smart space")}</b><span><i className={`online-dot ${providers.length ? "" : "off"}`} /> {providers.length ? tr("متصل — جاهز للتفكير", "Connected — ready to think") : tr("غير مهيأ — أضف مفتاح API", "Not ready — add an API key")}</span></div></div>
-            <div className="chat-header-actions">{activeConversation?.tokens ? <span className="token-chip" title={tr("إجمالي التوكنز المستهلكة في هذه المحادثة", "Total tokens used in this conversation")}><Gauge size={13} /><b>{activeConversation.tokens.toLocaleString(lang === "ar" ? "ar-SA" : "en-US")}</b><small>{tr("توكن", "tokens")}</small></span> : null}{activeConversation?.expiresAt ? <span className="expiry-chip" title={tr("تُحذف المحادثة تلقائيًا بعد 72 ساعة", "The conversation auto-deletes after 72 hours")}><Timer size={13} /><span>{formatCountdown(activeConversation.expiresAt, now, lang)}</span></span> : null}{activeConversation ? <button className="pdf-button" onClick={downloadConversationPdf} title={tr("تحميل المحادثة كاملة PDF", "Download the full conversation as PDF")}><Download size={14} /> PDF</button> : null}<button className="lang-button" onClick={() => setLang(lang === "ar" ? "en" : "ar")} title={tr("تحويل الموقع إلى الإنجليزية", "Switch the site to Arabic")} aria-label={tr("تغيير اللغة", "Change language")}>{lang === "ar" ? "EN" : "ع"}</button><button className={`model-pill ${modelPickerOpen ? "open" : ""}`} onClick={() => setModelPickerOpen(!modelPickerOpen)} title={tr("تبديل النموذج", "Switch model")}><span className="model-glow" />{activeProvider?.name ?? tr("أضف مفتاح API", "Add an API key")}<ChevronDown size={14} /></button><button className="icon-button subtle" onClick={() => setSettingsOpen(true)}><PanelRight size={17} /></button></div>
+            <div className="chat-header-actions"><ContextMeter used={activeConversation?.tokens ?? 0} model={activeProvider?.model} lang={lang} />{activeConversation?.expiresAt ? <span className="expiry-chip" title={tr("تُحذف المحادثة تلقائيًا بعد 72 ساعة", "The conversation auto-deletes after 72 hours")}><Timer size={13} /><span>{formatCountdown(activeConversation.expiresAt, now, lang)}</span></span> : null}{activeConversation ? <button className="pdf-button" onClick={downloadConversationPdf} title={tr("تحميل المحادثة كاملة PDF", "Download the full conversation as PDF")}><Download size={14} /> PDF</button> : null}<button className="lang-button" onClick={() => setLang(lang === "ar" ? "en" : "ar")} title={tr("تحويل الموقع إلى الإنجليزية", "Switch the site to Arabic")} aria-label={tr("تغيير اللغة", "Change language")}>{lang === "ar" ? "EN" : "ع"}</button><button className={`model-pill ${modelPickerOpen ? "open" : ""}`} onClick={() => setModelPickerOpen(!modelPickerOpen)} title={tr("تبديل النموذج", "Switch model")}><span className="model-glow" />{activeProvider?.name ?? tr("أضف مفتاح API", "Add an API key")}<ChevronDown size={14} /></button><button className="icon-button subtle" onClick={() => setSettingsOpen(true)}><PanelRight size={17} /></button></div>
           </div>
           <div className="messages-viewport">
             {(!activeConversation || activeConversation.messages.length === 0) ? (

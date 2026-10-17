@@ -16,6 +16,7 @@ const MODEL_LIMITS: Array<{ match: RegExp; limit: number }> = [
   { match: /llama-3|llama3|llama-4/i, limit: 131072 },
   { match: /llama-2/i, limit: 4096 },
   { match: /deepseek/i, limit: 65536 },
+  { match: /xingchen|xing4\.0/i, limit: 262144 },
   { match: /qwen/i, limit: 131072 },
   { match: /mixtral|mistral/i, limit: 32768 },
   { match: /venice-uncensored/i, limit: 8192 },
