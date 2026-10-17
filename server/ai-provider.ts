@@ -22,7 +22,21 @@ function requireKey(provider: ProviderInput) {
   if (provider.kind !== "demo" && !provider.apiKey) throw new TRPCError({ code: "BAD_REQUEST", message: "لا يوجد مفتاح API مضاف لهذا النموذج — أضفه من إعدادات المزود أو اطلب من المشرف تفعيله." });
 }
 function joinEndpoint(base: string, path: string) { const clean = base.replace(/\/$/, ""); return clean.endsWith(path) ? clean : `${clean}${path}`; }
-function providerError(data: unknown, fallback: string) { const value = data as { error?: { message?: string } } | undefined; return value?.error?.message || fallback; }
+function providerError(data: unknown, fallback: string) {
+  const value = data as { error?: { message?: string; code?: number; metadata?: { raw?: string } } } | undefined;
+  const raw = value?.error?.metadata?.raw || "";
+  const code = value?.error?.code;
+  const base = value?.error?.message || fallback;
+  // Free tiers routinely hit upstream rate limits (429). Surface a clear,
+  // actionable message instead of the raw "Provider returned error" blob.
+  if (code === 429 || /rate[- ]?limited|rate limit|too many requests/i.test(raw)) {
+    return "النموذج المجاني مزدحم حاليًا (تجاوز حد المزوّد). أعد المحاولة بعد قليل أو اختر نموذجًا آخر.";
+  }
+  if (/ResourceExhausted|limit reached/i.test(raw)) {
+    return "المزوّد وصل حدّه المؤقت الآن. أعد المحاولة بعد قليل أو اختر نموذجًا آخر.";
+  }
+  return raw ? `${base} — ${raw.slice(0, 180)}` : base;
+}
 async function readJson(response: Response) { return response.json().catch(() => ({})); }
 function dataUriParts(data: string) { const match = data.match(/^data:([^;]+);base64,([\s\S]+)$/); return match ? { mimeType: match[1], base64: match[2] } : null; }
 function hasAttachments(messages: ChatInput[]) { return messages.some(message => message.attachments?.length); }
@@ -40,6 +54,20 @@ async function fetchGuarded(input: RequestInfo | URL, init?: RequestInit, provid
       message: timeout ? `انتهت مهلة الاتصال بـ ${providerLabel} — حاول مرة أخرى لاحقًا.` : `تعذّر الاتصال بـ ${providerLabel} — تأكد من رابط Endpoint والمفتاح ومن اتصال الإنترنت.${detail ? ` (${detail.slice(0, 160)})` : ""}`,
     });
   }
+}
+
+// Free model tiers are often briefly rate-limited upstream (429) or flaky (5xx).
+// Retrying the *initial* request a couple of times is safe because nothing has
+// been streamed to the client yet and it turns a transient failure into a reply.
+async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit, providerLabel = "مزود الذكاء", attempts = 3) {
+  let response = await fetchGuarded(input, init, providerLabel);
+  for (let attempt = 1; attempt < attempts; attempt++) {
+    if (response.status !== 429 && response.status < 500) break;
+    await response.body?.cancel().catch(() => {});
+    await new Promise(resolve => setTimeout(resolve, 800 * attempt));
+    response = await fetchGuarded(input, init, providerLabel);
+  }
+  return response;
 }
 
 function demoResponse(text: string, attachments: AttachmentInput[] = []) {
@@ -80,7 +108,7 @@ export async function callProvider(provider: ProviderInput, messages: ChatInput[
   if (provider.kind === "google") {
     const base = endpoint || "https://generativelanguage.googleapis.com"; const url = `${base.replace(/\/$/, "")}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`; const response = await fetchGuarded(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ contents: googleContents(messages) }) }, "Google Gemini"); const data = await readJson(response); if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: `تعذّر الاتصال بـ Google Gemini — ${providerError(data, "تأكد من صحة المفتاح واسم النموذج")}` }); return data?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || "").join("\n") || "";
   }
-  const base = endpoint || (provider.kind === "openrouter" ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1"); const response = await fetchGuarded(joinEndpoint(base, "/chat/completions"), { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ model, messages: openAiMessages(messages), temperature: 0.6, ...(provider.kind === "openrouter" ? { reasoning: { enabled: true } } : {}) }) }, provider.kind === "czai" ? "CzAI" : provider.kind === "openrouter" ? "OpenRouter" : "المزود"); const data = await readJson(response); if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: providerError(data, "تعذّر الاتصال بالمزود — تأكد من صحة المفتاح واسم النموذج ورابط Endpoint") }); return data?.choices?.[0]?.message?.content || "";
+  const base = endpoint || (provider.kind === "openrouter" ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1"); const response = await (provider.kind === "openrouter" ? fetchWithRetry : fetchGuarded)(joinEndpoint(base, "/chat/completions"), { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` }, body: JSON.stringify({ model, messages: openAiMessages(messages), temperature: 0.6, ...(provider.kind === "openrouter" ? { reasoning: { enabled: true } } : {}) }) }, provider.kind === "czai" ? "CzAI" : provider.kind === "openrouter" ? "OpenRouter" : "المزود"); const data = await readJson(response); if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: providerError(data, "تعذّر الاتصال بالمزود — تأكد من صحة المفتاح واسم النموذج ورابط Endpoint") }); return data?.choices?.[0]?.message?.content || "";
 }
 
 async function* readSSE(response: Response): AsyncGenerator<string> { if (!response.body) return; const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; while (true) { const { value, done } = await reader.read(); buffer += decoder.decode(value || new Uint8Array(), { stream: !done }); const lines = buffer.split(/\r?\n/); buffer = lines.pop() || ""; for (const line of lines) if (line.startsWith("data:")) { const payload = line.slice(5).trim(); if (payload) yield payload; } if (done) break; } if (buffer.startsWith("data:")) yield buffer.slice(5).trim(); }
@@ -93,7 +121,7 @@ export async function* streamProvider(provider: ProviderInput, messages: ChatInp
   requireKey(provider); const endpoint = provider.endpoint?.trim(); const apiKey = provider.apiKey as string; const model = provider.model; let response: Response;
   if (provider.kind === "anthropic") response = await fetchGuarded(joinEndpoint(endpoint || "https://api.anthropic.com/v1", "/messages"), { method: "POST", headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", accept: "text/event-stream" }, body: JSON.stringify({ model, max_tokens: 1800, messages: anthropicMessages(messages), stream: true }) }, "Anthropic");
   else if (provider.kind === "google") { const base = endpoint || "https://generativelanguage.googleapis.com"; const url = `${base.replace(/\/$/, "")}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(apiKey)}`; response = await fetchGuarded(url, { method: "POST", headers: { "content-type": "application/json", accept: "text/event-stream" }, body: JSON.stringify({ contents: googleContents(messages) }) }, "Google Gemini"); }
-  else { const base = endpoint || (provider.kind === "openrouter" ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1"); response = await fetchGuarded(joinEndpoint(base, "/chat/completions"), { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}`, accept: "text/event-stream" }, body: JSON.stringify({ model, messages: openAiMessages(messages), temperature: 0.6, stream: true, stream_options: { include_usage: true }, ...(provider.kind === "openrouter" ? { reasoning: { enabled: true } } : {}) }) }, provider.kind === "czai" ? "CzAI" : provider.kind === "openrouter" ? "OpenRouter" : "المزود"); }
+  else { const base = endpoint || (provider.kind === "openrouter" ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1"); response = await (provider.kind === "openrouter" ? fetchWithRetry : fetchGuarded)(joinEndpoint(base, "/chat/completions"), { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}`, accept: "text/event-stream" }, body: JSON.stringify({ model, messages: openAiMessages(messages), temperature: 0.6, stream: true, stream_options: { include_usage: true }, ...(provider.kind === "openrouter" ? { reasoning: { enabled: true } } : {}) }) }, provider.kind === "czai" ? "CzAI" : provider.kind === "openrouter" ? "OpenRouter" : "المزود"); }
   if (!response.ok) { const data = await readJson(response); throw new TRPCError({ code: "BAD_REQUEST", message: providerError(data, "تعذّر بدء البث — تأكد من المفتاح واسم النموذج ورابط Endpoint") }); }
   let anthropicInput = 0; let anthropicOutput = 0; const reasoningDetails: unknown[] = [];
   for await (const event of readSSE(response)) { if (event === "[DONE]") continue; try {
